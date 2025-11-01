@@ -1,5 +1,4 @@
 "use client";
-
 import Link from "next/link";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 
@@ -9,7 +8,7 @@ export default function Home() {
       <div className="max-w-md w-full text-center space-y-4">
         <h1 className="text-2xl font-semibold">Legalizacja Wodomierzy</h1>
         <p className="text-zinc-600">
-          Zaloguj się, aby przejść do panelu i rejestrować postęp.
+          Rejestruj liczbę zalegalizowanych sztuk i śledź postęp względem planu.
         </p>
 
         <SignedOut>
