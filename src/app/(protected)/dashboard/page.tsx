@@ -139,7 +139,6 @@ export default async function Dashboard({
                 name="req"
                 defaultValue={currentReq?.id}
                 className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100"
-                onChange={(e) => e.currentTarget.form?.submit()}
               >
                 {reqList.map((r) => (
                   <option key={r.id} value={r.id}>
@@ -156,7 +155,6 @@ export default async function Dashboard({
             </form>
           </section>
         )}
-
         {reqList.length === 0 || dayList.length === 0 || !currentReq ? (
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-6 shadow-md">
             <p className="text-zinc-200">
