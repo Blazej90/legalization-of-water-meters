@@ -20,7 +20,7 @@ const EntrySchema = z.object({
 export default async function Dashboard({
   searchParams,
 }: {
-  searchParams?: { req?: string };
+  searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
@@ -33,10 +33,16 @@ export default async function Dashboard({
   const reqList = await db.select().from(requests).orderBy(desc(requests.id));
   const dayList = await db.select().from(workDays).orderBy(desc(workDays.date));
 
+  // ── bezpieczne parsowanie ?req= ──────────────────────────────────────────
+  const rawReq = searchParams?.req;
+  const rawReqStr = Array.isArray(rawReq) ? rawReq[0] : rawReq;
+  const selectedReqId = (() => {
+    if (!rawReqStr) return undefined;
+    const n = Number(rawReqStr);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  })();
+
   // wybór wniosku po ?req=<id> lub najnowszy
-  const selectedReqId = searchParams?.req
-    ? Number(searchParams.req)
-    : undefined;
   const currentReq =
     (selectedReqId
       ? reqList.find((r) => r.id === selectedReqId)
@@ -70,7 +76,7 @@ export default async function Dashboard({
         .orderBy(desc(sql`sum(${entries.count})`))
     : [];
 
-  // ostatnie wpisy
+  // ostatnie wpisy (filtrowane pod currentReq)
   const recent = currentReq
     ? await db
         .select({
@@ -88,6 +94,7 @@ export default async function Dashboard({
         .limit(12)
     : [];
 
+  // ── server action: dodanie wpisu ────────────────────────────────────────
   async function addEntry(formData: FormData) {
     "use server";
     const parsed = EntrySchema.safeParse({
@@ -155,6 +162,7 @@ export default async function Dashboard({
             </form>
           </section>
         )}
+
         {reqList.length === 0 || dayList.length === 0 || !currentReq ? (
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-6 shadow-md">
             <p className="text-zinc-200">
