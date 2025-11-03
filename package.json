@@ -7,7 +7,9 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "make-admin": "tsx -r tsconfig-paths/register scripts/make-admin.ts",
+    "seed": "tsx -r tsconfig-paths/register scripts/seed-sample.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.33.3",

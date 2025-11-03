@@ -17,7 +17,11 @@ const EntrySchema = z.object({
   count: z.coerce.number().int().positive(),
 });
 
-export default async function Dashboard() {
+export default async function Dashboard({
+  searchParams,
+}: {
+  searchParams?: { req?: string };
+}) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
@@ -28,7 +32,15 @@ export default async function Dashboard() {
   // listy wyboru
   const reqList = await db.select().from(requests).orderBy(desc(requests.id));
   const dayList = await db.select().from(workDays).orderBy(desc(workDays.date));
-  const currentReq = reqList[0] ?? null;
+
+  // wybór wniosku po ?req=<id> lub najnowszy
+  const selectedReqId = searchParams?.req
+    ? Number(searchParams.req)
+    : undefined;
+  const currentReq =
+    (selectedReqId
+      ? reqList.find((r) => r.id === selectedReqId)
+      : reqList[0]) ?? null;
 
   // agregaty dla bieżącego wniosku
   const doneRow = currentReq
@@ -59,19 +71,22 @@ export default async function Dashboard() {
     : [];
 
   // ostatnie wpisy
-  const recent = await db
-    .select({
-      id: entries.id,
-      count: entries.count,
-      createdAt: entries.createdAt,
-      requestId: entries.requestId,
-      workDayId: entries.workDayId,
-      inspectorName: users.name,
-    })
-    .from(entries)
-    .innerJoin(users, eq(entries.inspectorId, users.id))
-    .orderBy(desc(entries.createdAt))
-    .limit(12);
+  const recent = currentReq
+    ? await db
+        .select({
+          id: entries.id,
+          count: entries.count,
+          createdAt: entries.createdAt,
+          requestId: entries.requestId,
+          workDayId: entries.workDayId,
+          inspectorName: users.name,
+        })
+        .from(entries)
+        .innerJoin(users, eq(entries.inspectorId, users.id))
+        .where(eq(entries.requestId, currentReq.id))
+        .orderBy(desc(entries.createdAt))
+        .limit(12)
+    : [];
 
   async function addEntry(formData: FormData) {
     "use server";
@@ -111,6 +126,36 @@ export default async function Dashboard() {
             {me.name ?? "Inspector"}
           </span>
         </header>
+
+        {/* Switcher wniosku */}
+        {reqList.length > 0 && (
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 shadow">
+            <form method="get" className="flex items-center gap-3">
+              <label htmlFor="req" className="text-sm text-zinc-300">
+                Wybierz wniosek:
+              </label>
+              <select
+                id="req"
+                name="req"
+                defaultValue={currentReq?.id}
+                className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100"
+                onChange={(e) => e.currentTarget.form?.submit()}
+              >
+                {reqList.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.applicantName} ({r.month}) — plan {r.plannedCount}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="px-3 py-2 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white transition"
+              >
+                Pokaż
+              </button>
+            </form>
+          </section>
+        )}
 
         {reqList.length === 0 || dayList.length === 0 || !currentReq ? (
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-6 shadow-md">
@@ -201,7 +246,7 @@ export default async function Dashboard() {
                   <select
                     name="workDayId"
                     className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 w-full"
-                    defaultValue={dayList[0].id}
+                    defaultValue={dayList[0]?.id}
                   >
                     {dayList.map((d) => (
                       <option key={d.id} value={d.id}>
