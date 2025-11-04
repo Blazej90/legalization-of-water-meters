@@ -4,14 +4,22 @@ import { z } from "zod";
 import { db } from "@/db/client";
 import { users, requests, workDays } from "@/db/schema";
 import { desc, eq, sql } from "drizzle-orm";
-import { MonthCalendar } from "@/components/month-calendar"; // ← NOWY IMPORT
+import { MonthCalendar } from "@/components/month-calendar"; // eksport nazwany
 
 // ── Schematy ───────────────────────────────────────────────────────────────
+// RequestSchema – to co zapisujemy w tabeli `requests`
 const RequestSchema = z.object({
   applicantName: z.string().min(2),
   month: z.string().regex(/^\d{4}-\d{2}$/), // YYYY-MM
-  plannedCount: z.coerce.number().int().positive(),
+  plannedCount: z.coerce.number().int().nonnegative(),
   notes: z.string().optional().default(""),
+});
+
+// Dodatkowe pola formularza do policzenia plannedCount
+const PlanBreakdownSchema = z.object({
+  smallCount: z.coerce.number().int().min(0).default(0), // Qn ≤ 15 m³/h
+  largeCount: z.coerce.number().int().min(0).default(0), // Qn > 15 m³/h
+  coupledCount: z.coerce.number().int().min(0).default(0), // sprzężone
 });
 
 const WorkDaySchema = z.object({
@@ -20,71 +28,66 @@ const WorkDaySchema = z.object({
   notes: z.string().optional().default(""),
 });
 
-// ── Akcje naprawcze / seed ────────────────────────────────────────────────
-async function makeMeAdmin() {
-  "use server";
-  const { userId } = await auth();
-  if (!userId) return;
-  const u = await currentUser();
-  const email = u?.emailAddresses?.[0]?.emailAddress;
-  if (!email) return;
-  await db.update(users).set({ role: "ADMIN" }).where(eq(users.email, email));
-  redirect("/admin");
-}
-
-async function seedSample() {
-  "use server";
-  await db.insert(requests).values({
-    applicantName: "Wodociągi i Kanalizacja Opole",
-    month: new Date().toISOString().slice(0, 7), // YYYY-MM
-    plannedCount: 320 + 18 + 2,
-    notes: "OUM03.WZ7.45.850.2025; Qn<15:320, Qn>15:18, sprzężone:2",
-  });
-  await db.insert(workDays).values({
-    date: new Date() as any,
-    isOpen: true,
-    notes: "Start legalizacji (seed)",
-  });
-  redirect("/admin");
-}
-
 // ── Widok ──────────────────────────────────────────────────────────────────
 export default async function AdminPage() {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
+  // minimalna autoryzacja (bez renderowania diagnostyki)
   const cu = await currentUser();
   const email = cu?.emailAddresses?.[0]?.emailAddress ?? null;
-
   const [me] = email
     ? await db.select().from(users).where(eq(users.email, email))
     : [];
+  if (!me || me.role !== "ADMIN") redirect("/dashboard");
 
-  const [{ cntReq }] = await db
-    .select({ cntReq: sql<number>`count(*)` })
-    .from(requests);
-  const [{ cntDay }] = await db
-    .select({ cntDay: sql<number>`count(*)` })
-    .from(workDays);
-
-  const issues: string[] = [];
-  if (!email) issues.push("Brak e-maila z Clerk (currentUser).");
-  if (!me) issues.push("Brak rekordu użytkownika w tabeli users.");
-  if (me && me.role !== "ADMIN")
-    issues.push(`Twoja rola w DB to "${me.role}", oczekiwano "ADMIN".`);
-  if (cntReq === 0) issues.push("Brak wniosków (requests).");
-  if (cntDay === 0) issues.push("Brak dni pracy (work_days).");
-
+  // ── Akcje formularzy ─────────────────────────────────────────────────────
   async function addRequest(formData: FormData) {
     "use server";
-    const parsed = RequestSchema.safeParse({
+
+    // 1) odczyt dodatkowych pól formularza
+    const applicationNumber = String(
+      formData.get("applicationNumber") ?? ""
+    ).trim();
+    const planParsed = PlanBreakdownSchema.safeParse({
+      smallCount: formData.get("smallCount"),
+      largeCount: formData.get("largeCount"),
+      coupledCount: formData.get("coupledCount"),
+    });
+    if (!planParsed.success) {
+      redirect("/admin?err=plan-validate");
+    }
+
+    const { smallCount, largeCount, coupledCount } = planParsed.data;
+    const plannedTotal = smallCount + largeCount + coupledCount;
+
+    // 2) standardowe pola requestu
+    const reqParsed = RequestSchema.safeParse({
       applicantName: formData.get("applicantName"),
       month: formData.get("month"),
-      plannedCount: formData.get("plannedCount"),
-      notes: formData.get("notes"),
+      plannedCount: plannedTotal,
+      notes: formData.get("notes") ?? "",
     });
-    if (!parsed.success) redirect("/admin?err=request-validate");
-    await db.insert(requests).values(parsed.data);
+    if (!reqParsed.success) {
+      redirect("/admin?err=request-validate");
+    }
+
+    // 3) złożenie notes: numer wniosku + rozbicie
+    const baseNotes = reqParsed.data.notes?.toString().trim();
+    const breakdown = `Qn≤15:${smallCount}, Qn>15:${largeCount}, sprzężone:${coupledCount}`;
+    const withNumber = applicationNumber
+      ? `Nr wniosku: ${applicationNumber}; ${breakdown}`
+      : breakdown;
+
+    const mergedNotes = baseNotes ? `${withNumber}; ${baseNotes}` : withNumber;
+
+    await db.insert(requests).values({
+      applicantName: reqParsed.data.applicantName,
+      month: reqParsed.data.month,
+      plannedCount: reqParsed.data.plannedCount,
+      notes: mergedNotes,
+    });
+
     redirect("/admin");
   }
 
@@ -95,7 +98,9 @@ export default async function AdminPage() {
       isOpen: formData.get("isOpen") === "on",
       notes: formData.get("notes"),
     });
-    if (!parsed.success) redirect("/admin?err=workday-validate");
+    if (!parsed.success) {
+      redirect("/admin?err=workday-validate");
+    }
     await db.insert(workDays).values({
       date: parsed.data.date as any,
       isOpen: parsed.data.isOpen,
@@ -104,11 +109,13 @@ export default async function AdminPage() {
     redirect("/admin");
   }
 
+  // Podglądy list
   const lastRequests = await db
     .select()
     .from(requests)
     .orderBy(desc(requests.id))
     .limit(10);
+
   const lastDays = await db
     .select()
     .from(workDays)
@@ -120,47 +127,69 @@ export default async function AdminPage() {
       <div className="mx-auto max-w-5xl p-6 space-y-8">
         <header className="flex items-center justify-between">
           <h2 className="text-2xl font-semibold tracking-tight">
-            Panel Admina — diagnostyka
+            Panel Admina
           </h2>
           <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-            {me?.role ?? "UNKNOWN"}
+            {me.role}
           </span>
         </header>
 
+        {/* FORM: Dodaj wniosek */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-5 space-y-4 shadow-md">
           <h3 className="font-medium text-zinc-100">Dodaj wniosek</h3>
           <form action={addRequest} className="grid md:grid-cols-4 gap-3">
             <input
               name="applicantName"
               placeholder="Wnioskodawca"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 md:col-span-2"
               required
             />
 
-            <div className="md:col-span-1">
-              <MonthCalendar name="month" label="Miesiąc" />
+            {/* Numer wniosku */}
+            <input
+              name="applicationNumber"
+              placeholder="Numer wniosku (np. OUM03.WZ7.45.850.2025)"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 md:col-span-2"
+            />
 
-              <input
-                name="month"
-                type="month"
-                defaultValue={new Date().toISOString().slice(0, 7)}
-                className="hidden"
-                readOnly
-              />
+            {/* Miesiąc (YYYY-MM) przez MonthCalendar */}
+            <div className="md:col-span-2">
+              <MonthCalendar name="month" label="Miesiąc" />
             </div>
 
+            {/* Rozbicie planu */}
             <input
-              name="plannedCount"
+              name="smallCount"
               type="number"
-              placeholder="Planowana liczba sztuk"
+              min={0}
+              placeholder="Małe (Qn ≤ 15)"
               className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
               required
             />
+            <input
+              name="largeCount"
+              type="number"
+              min={0}
+              placeholder="Duże (Qn > 15)"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
+              required
+            />
+            <input
+              name="coupledCount"
+              type="number"
+              min={0}
+              placeholder="Sprzężone"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
+              required
+            />
+
+            {/* Dodatkowe uwagi (opcjonalnie) */}
             <input
               name="notes"
               placeholder="Uwagi (opcjonalnie)"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 md:col-span-4"
             />
+
             <div className="md:col-span-4">
               <button className="px-4 py-2 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white transition w-full md:w-auto">
                 Zapisz wniosek
