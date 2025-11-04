@@ -1,10 +1,10 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db/client";
 import { users, requests, workDays } from "@/db/schema";
 import { desc, eq, sql } from "drizzle-orm";
+import { MonthCalendar } from "@/components/month-calendar"; // ← NOWY IMPORT
 
 // ── Schematy ───────────────────────────────────────────────────────────────
 const RequestSchema = z.object({
@@ -29,7 +29,7 @@ async function makeMeAdmin() {
   const email = u?.emailAddresses?.[0]?.emailAddress;
   if (!email) return;
   await db.update(users).set({ role: "ADMIN" }).where(eq(users.email, email));
-  revalidatePath("/admin");
+  redirect("/admin");
 }
 
 async function seedSample() {
@@ -45,7 +45,7 @@ async function seedSample() {
     isOpen: true,
     notes: "Start legalizacji (seed)",
   });
-  revalidatePath("/admin");
+  redirect("/admin");
 }
 
 // ── Widok ──────────────────────────────────────────────────────────────────
@@ -83,9 +83,9 @@ export default async function AdminPage() {
       plannedCount: formData.get("plannedCount"),
       notes: formData.get("notes"),
     });
-    if (!parsed.success) return;
+    if (!parsed.success) redirect("/admin?err=request-validate");
     await db.insert(requests).values(parsed.data);
-    revalidatePath("/admin");
+    redirect("/admin");
   }
 
   async function addWorkDay(formData: FormData) {
@@ -95,13 +95,13 @@ export default async function AdminPage() {
       isOpen: formData.get("isOpen") === "on",
       notes: formData.get("notes"),
     });
-    if (!parsed.success) return;
+    if (!parsed.success) redirect("/admin?err=workday-validate");
     await db.insert(workDays).values({
       date: parsed.data.date as any,
       isOpen: parsed.data.isOpen,
       notes: parsed.data.notes,
     });
-    revalidatePath("/admin");
+    redirect("/admin");
   }
 
   const lastRequests = await db
@@ -127,72 +127,6 @@ export default async function AdminPage() {
           </span>
         </header>
 
-        {/* DIAGNOSTYKA */}
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-5 space-y-3 shadow-md">
-          <div className="text-sm leading-relaxed">
-            <div className="flex flex-wrap gap-x-6 gap-y-2">
-              <div>
-                <span className="text-zinc-400">Clerk userId:</span>{" "}
-                <code className="text-zinc-200">{cu?.id ?? "—"}</code>
-              </div>
-              <div>
-                <span className="text-zinc-400">E-mail (Clerk):</span>{" "}
-                <code className="text-zinc-200">{email ?? "—"}</code>
-              </div>
-              <div>
-                <span className="text-zinc-400">Rekord w DB:</span>{" "}
-                {me ? (
-                  <span className="text-zinc-200">
-                    id={me.id}, role=
-                    <b className="text-emerald-300">{me.role}</b>
-                  </span>
-                ) : (
-                  <span className="text-amber-300">—</span>
-                )}
-              </div>
-              <div>
-                <span className="text-zinc-400">Requests w DB:</span>{" "}
-                <b className="text-zinc-200">{cntReq}</b>{" "}
-                <span className="text-zinc-400">• Work days:</span>{" "}
-                <b className="text-zinc-200">{cntDay}</b>
-              </div>
-            </div>
-          </div>
-
-          {issues.length === 0 ? (
-            <div className="text-emerald-300 text-sm">
-              ✅ Wszystko wygląda OK — przejdź do dodawania danych poniżej lub
-              od razu na <code className="text-emerald-200">/dashboard</code>.
-            </div>
-          ) : (
-            <ul className="list-disc pl-5 text-sm text-amber-300">
-              {issues.map((i, idx) => (
-                <li key={idx}>{i}</li>
-              ))}
-            </ul>
-          )}
-
-          <div className="flex flex-wrap gap-3 pt-1">
-            <form action={makeMeAdmin}>
-              <button className="px-4 py-2 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white transition">
-                Nadaj mi rolę ADMIN
-              </button>
-            </form>
-            <form action={seedSample}>
-              <button className="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 transition">
-                Dodaj przykładowe dane
-              </button>
-            </form>
-          </div>
-
-          <p className="text-xs text-zinc-400">
-            Uwaga: jeśli po kliknięciu przycisków nic się nie zmienia, sprawdź
-            czy aplikacja i skrypty używają <b>tego samego</b> DATABASE_URL w{" "}
-            <code className="text-zinc-300">.env.local</code>.
-          </p>
-        </section>
-
-        {/* FORM: Dodaj wniosek */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-5 space-y-4 shadow-md">
           <h3 className="font-medium text-zinc-100">Dodaj wniosek</h3>
           <form action={addRequest} className="grid md:grid-cols-4 gap-3">
@@ -202,12 +136,19 @@ export default async function AdminPage() {
               className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
               required
             />
-            <input
-              name="month"
-              type="month"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100"
-              required
-            />
+
+            <div className="md:col-span-1">
+              <MonthCalendar name="month" label="Miesiąc" />
+
+              <input
+                name="month"
+                type="month"
+                defaultValue={new Date().toISOString().slice(0, 7)}
+                className="hidden"
+                readOnly
+              />
+            </div>
+
             <input
               name="plannedCount"
               type="number"
