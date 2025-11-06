@@ -13,11 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Calendar as CalendarIcon } from "lucide-react";
 
 type Props = {
-  /** nazwa hidden inputu z miesiącem, np. "month" (YYYY-MM) */
   name: string;
   label?: string;
-  defaultValue?: string; // np. "2025-11"
-  /** nazwa hidden inputu z pełną datą, domyślnie "submittedAt" (YYYY-MM-DD) */
+  defaultValue?: string;
   submitDateName?: string;
 };
 
@@ -41,7 +39,6 @@ export function MonthCalendar({
   submitDateName = "submittedAt",
 }: Props) {
   const initial = React.useMemo(() => {
-    // jeśli podano defaultValue "YYYY-MM" → ustaw na 1. dzień tego miesiąca
     if (defaultValue && /^\d{4}-\d{2}$/.test(defaultValue)) {
       const [y, m] = defaultValue.split("-").map(Number);
       return new Date(y, (m ?? 1) - 1, 1);
@@ -53,17 +50,14 @@ export function MonthCalendar({
   const [open, setOpen] = React.useState(false);
   const [selected, setSelected] = React.useState<Date>(initial);
 
-  const display = format(selected, "d LLLL yyyy", { locale: pl }); // pokazujemy DZIEŃ + miesiąc + rok
+  const display = format(selected, "d LLLL yyyy", { locale: pl });
   const hiddenMonth = toYYYYMM(selected);
   const hiddenFullDate = toYYYYMMDD(selected);
 
   return (
     <div className="space-y-1.5">
       {label && <label className="text-sm text-zinc-300">{label}</label>}
-
-      {/* hidden: YYYY-MM */}
       <input type="hidden" name={name} value={hiddenMonth} />
-      {/* hidden: YYYY-MM-DD */}
       <input type="hidden" name={submitDateName} value={hiddenFullDate} />
 
       <Popover open={open} onOpenChange={setOpen}>
@@ -89,7 +83,6 @@ export function MonthCalendar({
             selected={selected}
             onSelect={(d) => {
               if (d) {
-                // WAŻNE: NIE normalizujemy do 1. dnia miesiąca.
                 setSelected(d);
                 setOpen(false);
               }

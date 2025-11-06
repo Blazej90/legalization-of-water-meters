@@ -6,6 +6,7 @@ import { db } from "@/db/client";
 import { users, requests, workDays } from "@/db/schema";
 import { desc, eq, sql } from "drizzle-orm";
 import { MonthCalendar } from "@/components/month-calendar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const RequestSchema = z.object({
   applicantName: z.string().min(2),
@@ -140,7 +141,6 @@ export default async function AdminPage() {
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-5 space-y-4 shadow-md">
           <h3 className="font-medium text-zinc-100">Dodaj wniosek</h3>
-
           <form action={addRequest} className="grid md:grid-cols-4 gap-3">
             <select
               name="applicantName"
@@ -203,66 +203,73 @@ export default async function AdminPage() {
             </div>
           </form>
 
-          <ul className="divide-y divide-zinc-800">
-            {lastRequests.map((r: any) => {
-              const nrMatch = r.notes?.match(/Nr wniosku:\s*([^;]+)/i);
-              const applicationNumber = nrMatch ? nrMatch[1].trim() : "—";
-              const dateMatch = r.notes?.match(
-                /Złożono:\s*(\d{4}-\d{2}-\d{2})/i
-              );
-              const submittedStr = dateMatch ? dateMatch[1] : null;
+          <ScrollArea className="h-64 rounded-lg border border-zinc-800">
+            <ul className="divide-y divide-zinc-800">
+              {lastRequests.map((r: any) => {
+                const nrMatch = r.notes?.match(/Nr wniosku:\s*([^;]+)/i);
+                const applicationNumber = nrMatch ? nrMatch[1].trim() : "—";
 
-              const submittedHuman = submittedStr
-                ? new Date(submittedStr + "T00:00:00").toLocaleDateString(
-                    "pl-PL",
-                    { year: "numeric", month: "2-digit", day: "2-digit" }
-                  )
-                : "—";
+                const dateMatch = r.notes?.match(
+                  /Złożono:\s*(\d{4}-\d{2}-\d{2})/i
+                );
+                const submittedStr = dateMatch ? dateMatch[1] : null;
+                const submittedHuman = submittedStr
+                  ? new Date(submittedStr + "T00:00:00").toLocaleDateString(
+                      "pl-PL",
+                      {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      }
+                    )
+                  : "—";
 
-              return (
-                <li key={r.id} className="py-2 text-sm">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-zinc-200">{r.applicantName}</div>
-                      <div className="text-zinc-400 text-xs">
-                        Numer wniosku:{" "}
-                        <b className="text-zinc-300">{applicationNumber}</b>
+                return (
+                  <li key={r.id} className="py-2 text-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-zinc-200">{r.applicantName}</div>
+                        <div className="text-zinc-400 text-xs">
+                          Numer wniosku:{" "}
+                          <b className="text-zinc-300">{applicationNumber}</b>
+                        </div>
+                        <div className="text-zinc-400 text-xs">
+                          z dnia:{" "}
+                          <b className="text-zinc-300">{submittedHuman}</b>
+                        </div>
+                        <div className="text-zinc-400 text-xs">
+                          Plan:{" "}
+                          <b className="text-zinc-300">{r.plannedCount}</b>
+                        </div>
                       </div>
-                      <div className="text-zinc-400 text-xs">
-                        z dnia:{" "}
-                        <b className="text-zinc-300">{submittedHuman}</b>
-                      </div>
-                      <div className="text-zinc-400 text-xs">
-                        Plan: <b className="text-zinc-300">{r.plannedCount}</b>
-                      </div>
+
+                      <form
+                        action={deleteRequest}
+                        className="shrink-0 flex items-center gap-2"
+                      >
+                        <input type="hidden" name="requestId" value={r.id} />
+                        <label className="text-xs text-zinc-400 flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            name="confirm"
+                            required
+                            className="align-middle"
+                          />
+                          potwierdzam
+                        </label>
+                        <button className="px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-500 text-xs">
+                          Usuń
+                        </button>
+                      </form>
                     </div>
-
-                    <form
-                      action={deleteRequest}
-                      className="shrink-0 flex items-center gap-2"
-                    >
-                      <input type="hidden" name="requestId" value={r.id} />
-                      <label className="text-xs text-zinc-400 flex items-center gap-1">
-                        <input
-                          type="checkbox"
-                          name="confirm"
-                          required
-                          className="align-middle"
-                        />
-                        potwierdzam
-                      </label>
-                      <button className="px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-500 text-xs">
-                        Usuń
-                      </button>
-                    </form>
-                  </div>
-                </li>
-              );
-            })}
-            {lastRequests.length === 0 && (
-              <li className="py-2 text-zinc-400 text-sm">Brak wniosków.</li>
-            )}
-          </ul>
+                  </li>
+                );
+              })}
+              {lastRequests.length === 0 && (
+                <li className="py-2 text-zinc-400 text-sm">Brak wniosków.</li>
+              )}
+            </ul>
+          </ScrollArea>
         </section>
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-5 space-y-4 shadow-md">
