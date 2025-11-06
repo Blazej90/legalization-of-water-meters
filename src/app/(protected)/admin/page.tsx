@@ -7,6 +7,7 @@ import { users, requests, workDays } from "@/db/schema";
 import { desc, eq, sql } from "drizzle-orm";
 import { MonthCalendar } from "@/components/month-calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
 
 const RequestSchema = z.object({
   applicantName: z.string().min(2),
@@ -141,63 +142,105 @@ export default async function AdminPage() {
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-5 space-y-4 shadow-md">
           <h3 className="font-medium text-zinc-100">Dodaj wniosek</h3>
-          <form action={addRequest} className="grid md:grid-cols-4 gap-3">
-            <select
-              name="applicantName"
-              defaultValue="Wodociągi i Kanalizacja w Opolu"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 md:col-span-2"
-              required
-            >
-              <option value="Wodociągi i Kanalizacja w Opolu">
-                Wodociągi i Kanalizacja w Opolu
-              </option>
-            </select>
-
-            <input
-              name="applicationNumber"
-              placeholder="Numer wniosku (np. OUM03.WZ7.45.850.2025)"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 md:col-span-2"
-            />
-
-            <MonthCalendar
-              name="month"
-              submitDateName="submittedAt"
-              label="Data złożenia"
-            />
-
-            <input
-              name="plannedSmall"
-              type="number"
-              min={0}
-              placeholder="Małe (Qn ≤ 15)"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
-              required
-            />
-            <input
-              name="plannedLarge"
-              type="number"
-              min={0}
-              placeholder="Duże (Qn > 15)"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
-              required
-            />
-            <input
-              name="plannedCoupled"
-              type="number"
-              min={0}
-              placeholder="Sprzężone"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
-              required
-            />
-
-            <input
-              name="notes"
-              placeholder="Uwagi (opcjonalnie)"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 md:col-span-4"
-            />
-
+          <form action={addRequest} className="grid gap-4 md:grid-cols-6">
+            {/* Wnioskodawca (4 kol) */}
             <div className="md:col-span-4">
-              <button className="px-4 py-2 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white transition w-full md:w-auto">
+              <label className="text-sm text-zinc-300 mb-1 block">
+                Wnioskodawca
+              </label>
+              <select
+                name="applicantName"
+                defaultValue="Wodociągi i Kanalizacja w Opolu"
+                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100"
+                required
+              >
+                <option value="Wodociągi i Kanalizacja w Opolu">
+                  Wodociągi i Kanalizacja w Opolu
+                </option>
+              </select>
+            </div>
+
+            {/* Numer wniosku (2 kol) */}
+            <div className="md:col-span-2">
+              <label className="text-sm text-zinc-300 mb-1 block">
+                Numer wniosku
+              </label>
+              <input
+                name="applicationNumber"
+                placeholder="np. OUM03.WZ7.45.850.2025"
+                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100"
+              />
+            </div>
+
+            {/* Data złożenia (2 kol) */}
+            <div className="md:col-span-2">
+              <MonthCalendar
+                name="month"
+                submitDateName="submittedAt"
+                label="Data złożenia"
+              />
+            </div>
+
+            {/* Liczniki (4 kol → 3 równe kolumny) */}
+            <div className="md:col-span-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-sm text-zinc-300 mb-1 block">
+                  Małe (<span className="italic">Q</span>
+                  <sub>n</sub> ≤ 15&nbsp;m<sup>3</sup>/h)
+                </label>
+                <input
+                  name="plannedSmall"
+                  type="number"
+                  min={0}
+                  className="w-full px-2 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 text-center"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-sm text-zinc-300 mb-1 block">
+                  Duże (<span className="italic">Q</span>
+                  <sub>n</sub> &gt; 15&nbsp;m<sup>3</sup>/h)
+                </label>
+                <input
+                  name="plannedLarge"
+                  type="number"
+                  min={0}
+                  className="w-full px-2 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 text-center"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-sm text-zinc-300 mb-1 block">
+                  Sprzężone
+                </label>
+                <input
+                  name="plannedCoupled"
+                  type="number"
+                  min={0}
+                  className="w-full px-2 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 text-center"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Uwagi (6 kol) */}
+            <div className="md:col-span-6">
+              <label className="text-sm text-zinc-300 mb-1 block">
+                Uwagi (opcjonalnie)
+              </label>
+              <Textarea
+                name="notes"
+                rows={6}
+                className="w-full min-h-[140px] max-h-60 bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 rounded-xl resize-y"
+                placeholder="Dodaj uwagi dotyczące wniosku…"
+              />
+            </div>
+
+            {/* Submit (6 kol, wyrównany do prawej) */}
+            <div className="md:col-span-6 flex justify-end">
+              <button className="px-4 py-2 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white transition">
                 Zapisz wniosek
               </button>
             </div>
