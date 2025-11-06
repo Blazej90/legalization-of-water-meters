@@ -4,13 +4,11 @@ import { z } from "zod";
 import { db } from "@/db/client";
 import { users, requests, workDays } from "@/db/schema";
 import { desc, eq, sql } from "drizzle-orm";
-import { MonthCalendar } from "@/components/month-calendar"; // eksport nazwany
+import { MonthCalendar } from "@/components/month-calendar";
 
-// ── Schematy ───────────────────────────────────────────────────────────────
-// RequestSchema – to co zapisujemy w tabeli `requests`
 const RequestSchema = z.object({
   applicantName: z.string().min(2),
-  month: z.string().regex(/^\d{4}-\d{2}$/), // YYYY-MM
+  month: z.string().regex(/^\d{4}-\d{2}$/),
   plannedCount: z.coerce.number().int().nonnegative(),
   notes: z.string().optional().default(""),
 });
@@ -23,17 +21,15 @@ const PlanBreakdownSchema = z.object({
 });
 
 const WorkDaySchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // YYYY-MM-DD
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   isOpen: z.coerce.boolean().optional().default(true),
   notes: z.string().optional().default(""),
 });
 
-// ── Widok ──────────────────────────────────────────────────────────────────
 export default async function AdminPage() {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  // minimalna autoryzacja (bez renderowania diagnostyki)
   const cu = await currentUser();
   const email = cu?.emailAddresses?.[0]?.emailAddress ?? null;
   const [me] = email
@@ -41,11 +37,9 @@ export default async function AdminPage() {
     : [];
   if (!me || me.role !== "ADMIN") redirect("/dashboard");
 
-  // ── Akcje formularzy ─────────────────────────────────────────────────────
   async function addRequest(formData: FormData) {
     "use server";
 
-    // 1) odczyt dodatkowych pól formularza
     const applicationNumber = String(
       formData.get("applicationNumber") ?? ""
     ).trim();
@@ -61,7 +55,6 @@ export default async function AdminPage() {
     const { smallCount, largeCount, coupledCount } = planParsed.data;
     const plannedTotal = smallCount + largeCount + coupledCount;
 
-    // 2) standardowe pola requestu
     const reqParsed = RequestSchema.safeParse({
       applicantName: formData.get("applicantName"),
       month: formData.get("month"),
@@ -72,7 +65,6 @@ export default async function AdminPage() {
       redirect("/admin?err=request-validate");
     }
 
-    // 3) złożenie notes: numer wniosku + rozbicie
     const baseNotes = reqParsed.data.notes?.toString().trim();
     const breakdown = `Qn≤15:${smallCount}, Qn>15:${largeCount}, sprzężone:${coupledCount}`;
     const withNumber = applicationNumber
@@ -109,7 +101,6 @@ export default async function AdminPage() {
     redirect("/admin");
   }
 
-  // Podglądy list
   const lastRequests = await db
     .select()
     .from(requests)
@@ -134,30 +125,30 @@ export default async function AdminPage() {
           </span>
         </header>
 
-        {/* FORM: Dodaj wniosek */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-5 space-y-4 shadow-md">
           <h3 className="font-medium text-zinc-100">Dodaj wniosek</h3>
           <form action={addRequest} className="grid md:grid-cols-4 gap-3">
-            <input
+            <select
               name="applicantName"
-              placeholder="Wnioskodawca"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 md:col-span-2"
+              defaultValue="Wodociągi i Kanalizacja w Opolu"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 md:col-span-2"
               required
-            />
+            >
+              <option value="Wodociągi i Kanalizacja w Opolu">
+                Wodociągi i Kanalizacja w Opolu
+              </option>
+            </select>
 
-            {/* Numer wniosku */}
             <input
               name="applicationNumber"
               placeholder="Numer wniosku (np. OUM03.WZ7.45.850.2025)"
               className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 md:col-span-2"
             />
 
-            {/* Miesiąc (YYYY-MM) przez MonthCalendar */}
             <div className="md:col-span-2">
               <MonthCalendar name="month" label="Miesiąc" />
             </div>
 
-            {/* Rozbicie planu */}
             <input
               name="smallCount"
               type="number"
@@ -183,7 +174,6 @@ export default async function AdminPage() {
               required
             />
 
-            {/* Dodatkowe uwagi (opcjonalnie) */}
             <input
               name="notes"
               placeholder="Uwagi (opcjonalnie)"
@@ -212,7 +202,6 @@ export default async function AdminPage() {
           </ul>
         </section>
 
-        {/* FORM: Dodaj dzień pracy */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-5 space-y-4 shadow-md">
           <h3 className="font-medium text-zinc-100">Dodaj dzień pracy</h3>
           <form action={addWorkDay} className="grid md:grid-cols-4 gap-3">
