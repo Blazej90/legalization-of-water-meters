@@ -7,34 +7,21 @@ import { users, requests, workDays } from "@/db/schema";
 import { desc, eq, sql } from "drizzle-orm";
 import { MonthCalendar } from "@/components/month-calendar";
 
-// ── Schematy ───────────────────────────────────────────────────────────────
-// Schema formularza (to, co przychodzi z <form/>)
-const RequestFormSchema = z.object({
+const RequestSchema = z.object({
   applicantName: z.string().min(2),
-  applicationNumber: z.string().optional().default(""),
-  month: z.string().regex(/^\d{4}-\d{2}$/), // YYYY-MM
-  submittedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // YYYY-MM-DD
-  plannedSmall: z.coerce.number().int().min(0),
-  plannedLarge: z.coerce.number().int().min(0),
-  plannedCoupled: z.coerce.number().int().min(0),
-  notes: z.string().optional().default(""),
-});
-
-// Schema do insertu w DB (zgodne z tabelą `requests`)
-const RequestDBSchema = z.object({
-  applicantName: z.string().min(2),
-  month: z.string().regex(/^\d{4}-\d{2}$/), // YYYY-MM
+  applicationNumber: z.string().min(2).optional().default(""),
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  submittedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   plannedCount: z.coerce.number().int().positive(),
   notes: z.string().optional().default(""),
 });
 
 const WorkDaySchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // YYYY-MM-DD
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   isOpen: z.coerce.boolean().optional().default(true),
   notes: z.string().optional().default(""),
 });
 
-// ── Widok ──────────────────────────────────────────────────────────────────
 export default async function AdminPage() {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
@@ -46,7 +33,6 @@ export default async function AdminPage() {
     ? await db.select().from(users).where(eq(users.email, email))
     : [];
 
-  // Ostatnie wpisy do list
   const lastRequests = await db
     .select()
     .from(requests)
@@ -59,47 +45,42 @@ export default async function AdminPage() {
     .orderBy(desc(workDays.date))
     .limit(10);
 
-  // ── Server actions ───────────────────────────────────────────────────────
   async function addRequest(formData: FormData) {
     "use server";
 
-    // 1) Parsujemy to, co przyszło z formularza
-    const parsedForm = RequestFormSchema.safeParse({
-      applicantName: formData.get("applicantName"),
-      applicationNumber: formData.get("applicationNumber"),
-      month: formData.get("month"),
-      submittedAt: formData.get("submittedAt"),
-      plannedSmall: formData.get("plannedSmall"),
-      plannedLarge: formData.get("plannedLarge"),
-      plannedCoupled: formData.get("plannedCoupled"),
-      notes: formData.get("notes"),
-    });
+    const plannedSmall = Number(formData.get("plannedSmall") ?? 0) || 0;
+    const plannedLarge = Number(formData.get("plannedLarge") ?? 0) || 0;
+    const plannedCoupled = Number(formData.get("plannedCoupled") ?? 0) || 0;
+    const plannedCountTotal = plannedSmall + plannedLarge + plannedCoupled;
 
-    if (!parsedForm.success) {
-      redirect("/admin?err=request-validate");
-    }
+    const rawMonth = String(formData.get("month") ?? "");
+    const month = rawMonth.slice(0, 7);
+    const submittedAt = String(formData.get("submittedAt") ?? "");
 
-    const f = parsedForm.data;
-    const plannedCountTotal =
-      f.plannedSmall + f.plannedLarge + f.plannedCoupled;
+    const applicationNumber = String(
+      formData.get("applicationNumber") ?? ""
+    ).trim();
+    const extraNotes = String(formData.get("notes") ?? "").trim();
 
-    // 2) Składamy notes tak, aby lista mogła łatwo to zczytać RegExpem
-    //    „Nr wniosku: ...; Złożono: YYYY-MM-DD; ...”
-    const pieces: string[] = [];
-    if (f.applicationNumber) pieces.push(`Nr wniosku: ${f.applicationNumber}`);
-    if (f.submittedAt) pieces.push(`Złożono: ${f.submittedAt}`);
-    if (f.notes) pieces.push(f.notes);
+    const pieces = [
+      applicationNumber ? `Nr wniosku: ${applicationNumber}` : null,
+      submittedAt ? `Złożono: ${submittedAt}` : null,
+      extraNotes || null,
+    ].filter(Boolean);
     const combinedNotes = pieces.join("; ");
 
-    // 3) Tworzymy payload dla DB (zgodny z kolumnami)
-    const dbPayload = RequestDBSchema.parse({
-      applicantName: f.applicantName,
-      month: f.month, // zostaje YYYY-MM (z MonthCalendar)
+    const payload = {
+      applicantName: String(formData.get("applicantName") ?? ""),
+      month,
+      submittedAt,
       plannedCount: plannedCountTotal,
       notes: combinedNotes,
-    });
+    };
 
-    await db.insert(requests).values(dbPayload);
+    const parsed = RequestSchema.safeParse(payload);
+    if (!parsed.success) redirect("/admin?err=request-validate");
+
+    await db.insert(requests).values(parsed.data);
     revalidatePath("/admin");
     redirect("/admin");
   }
@@ -118,17 +99,33 @@ export default async function AdminPage() {
     }
 
     await db.insert(workDays).values({
-      date: parsed.data.date as any, // YYYY-MM-DD
+      date: parsed.data.date as any,
       isOpen: parsed.data.isOpen,
       notes: parsed.data.notes,
     });
 
-    // revalidate + redirect
-    revalidatePath("/admin");
     redirect("/admin");
   }
 
-  // ── UI ──────────────────────────────────────────────────────────────────
+  async function deleteRequest(formData: FormData) {
+    "use server";
+    if (formData.get("confirm") !== "on") {
+      redirect("/admin?err=confirm-required");
+    }
+
+    const idRaw = formData.get("requestId");
+    const id = Number(idRaw);
+    if (!Number.isFinite(id)) redirect("/admin?err=bad-request-id");
+
+    try {
+      await db.delete(requests).where(eq(requests.id, id));
+      revalidatePath("/admin");
+    } catch {
+      redirect("/admin?err=delete-failed");
+    }
+    redirect("/admin");
+  }
+
   return (
     <main className="min-h-dvh bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-5xl p-6 space-y-8">
@@ -141,16 +138,14 @@ export default async function AdminPage() {
           </span>
         </header>
 
-        {/* FORM: Dodaj wniosek */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-5 space-y-4 shadow-md">
           <h3 className="font-medium text-zinc-100">Dodaj wniosek</h3>
 
           <form action={addRequest} className="grid md:grid-cols-4 gap-3">
-            {/* Wnioskodawca (rozwijana, z domyślną wartością) */}
             <select
               name="applicantName"
               defaultValue="Wodociągi i Kanalizacja w Opolu"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 md:col-span-2"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 md:col-span-2"
               required
             >
               <option value="Wodociągi i Kanalizacja w Opolu">
@@ -158,27 +153,24 @@ export default async function AdminPage() {
               </option>
             </select>
 
-            {/* Numer wniosku */}
             <input
               name="applicationNumber"
               placeholder="Numer wniosku (np. OUM03.WZ7.45.850.2025)"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 md:col-span-2"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 md:col-span-2"
             />
 
-            {/* Kalendarz: month (YYYY-MM) + submittedAt (YYYY-MM-DD) */}
             <MonthCalendar
               name="month"
               submitDateName="submittedAt"
               label="Data złożenia"
             />
 
-            {/* Plan rozbity na 3 pola → sumowane do plannedCount */}
             <input
               name="plannedSmall"
               type="number"
               min={0}
               placeholder="Małe (Qn ≤ 15)"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
               required
             />
             <input
@@ -186,7 +178,7 @@ export default async function AdminPage() {
               type="number"
               min={0}
               placeholder="Duże (Qn > 15)"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
               required
             />
             <input
@@ -194,15 +186,14 @@ export default async function AdminPage() {
               type="number"
               min={0}
               placeholder="Sprzężone"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500"
               required
             />
 
-            {/* Uwagi (opcjonalnie) */}
             <input
               name="notes"
               placeholder="Uwagi (opcjonalnie)"
-              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 md:col-span-4"
+              className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 md:col-span-4"
             />
 
             <div className="md:col-span-4">
@@ -212,41 +203,58 @@ export default async function AdminPage() {
             </div>
           </form>
 
-          {/* Lista ostatnich wniosków */}
           <ul className="divide-y divide-zinc-800">
             {lastRequests.map((r: any) => {
-              // Numer wniosku z notes: „Nr wniosku: ...”
               const nrMatch = r.notes?.match(/Nr wniosku:\s*([^;]+)/i);
               const applicationNumber = nrMatch ? nrMatch[1].trim() : "—";
-
-              // Data złożenia z notes: „Złożono: YYYY-MM-DD”
               const dateMatch = r.notes?.match(
                 /Złożono:\s*(\d{4}-\d{2}-\d{2})/i
               );
               const submittedStr = dateMatch ? dateMatch[1] : null;
+
               const submittedHuman = submittedStr
                 ? new Date(submittedStr + "T00:00:00").toLocaleDateString(
                     "pl-PL",
-                    {
-                      year: "numeric",
-                      month: "2-digit",
-                      day: "2-digit",
-                    }
+                    { year: "numeric", month: "2-digit", day: "2-digit" }
                   )
                 : "—";
 
               return (
                 <li key={r.id} className="py-2 text-sm">
-                  <div className="text-zinc-200">{r.applicantName}</div>
-                  <div className="text-zinc-400 text-xs">
-                    Numer wniosku:{" "}
-                    <b className="text-zinc-300">{applicationNumber}</b>
-                  </div>
-                  <div className="text-zinc-400 text-xs">
-                    z dnia: <b className="text-zinc-300">{submittedHuman}</b>
-                  </div>
-                  <div className="text-zinc-400 text-xs">
-                    Plan: <b className="text-zinc-300">{r.plannedCount}</b>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-zinc-200">{r.applicantName}</div>
+                      <div className="text-zinc-400 text-xs">
+                        Numer wniosku:{" "}
+                        <b className="text-zinc-300">{applicationNumber}</b>
+                      </div>
+                      <div className="text-zinc-400 text-xs">
+                        z dnia:{" "}
+                        <b className="text-zinc-300">{submittedHuman}</b>
+                      </div>
+                      <div className="text-zinc-400 text-xs">
+                        Plan: <b className="text-zinc-300">{r.plannedCount}</b>
+                      </div>
+                    </div>
+
+                    <form
+                      action={deleteRequest}
+                      className="shrink-0 flex items-center gap-2"
+                    >
+                      <input type="hidden" name="requestId" value={r.id} />
+                      <label className="text-xs text-zinc-400 flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          name="confirm"
+                          required
+                          className="align-middle"
+                        />
+                        potwierdzam
+                      </label>
+                      <button className="px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-500 text-xs">
+                        Usuń
+                      </button>
+                    </form>
                   </div>
                 </li>
               );
@@ -257,7 +265,6 @@ export default async function AdminPage() {
           </ul>
         </section>
 
-        {/* FORM: Dodaj dzień pracy */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-5 space-y-4 shadow-md">
           <h3 className="font-medium text-zinc-100">Dodaj dzień pracy</h3>
           <form action={addWorkDay} className="grid md:grid-cols-4 gap-3">
