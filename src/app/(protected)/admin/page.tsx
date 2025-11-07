@@ -70,7 +70,6 @@ export default async function AdminPage() {
     const pieces = [
       applicationNumber ? `Nr wniosku: ${applicationNumber}` : null,
       submittedAt ? `Złożono: ${submittedAt}` : null,
-      // ⬇️ te trzy linie są kluczowe dla dashboardu
       `Małe: ${plannedSmall}`,
       `Duże: ${plannedLarge}`,
       `Sprzężone: ${plannedCoupled}`,

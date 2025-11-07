@@ -24,7 +24,7 @@ export const users = pgTable("users", {
 export const requests = pgTable("requests", {
   id: serial("id").primaryKey(),
   applicantName: varchar("applicant_name", { length: 191 }).notNull(),
-  month: varchar("month", { length: 7 }).notNull(), // YYYY-MM
+  month: varchar("month", { length: 7 }).notNull(),
   plannedCount: integer("planned_count").notNull(),
   notes: text("notes"),
 });
@@ -37,19 +37,14 @@ export const workDays = pgTable("work_days", {
 });
 
 export const entries = pgTable("entries", {
-  id: serial("id").primaryKey(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
 
-  requestId: integer("request_id").notNull(), // + FK jak u Ciebie
+  requestId: integer("request_id").notNull(),
   workDayId: integer("work_day_id").notNull(),
   inspectorId: integer("inspector_id").notNull(),
-
-  // ⬇️ NOWE KOLUMNY – nazwy w DB w snake_case,
-  //    klucze eksportowane do TS w camelCase,
-  //    MUSZĄ mieć default(0) i notNull()
   countSmall: integer("count_small").notNull().default(0),
   countLarge: integer("count_large").notNull().default(0),
   countCoupled: integer("count_coupled").notNull().default(0),
-
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 
