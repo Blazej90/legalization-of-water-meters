@@ -4,13 +4,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import AutoRefresh from "@/components/auto-refresh";
 
+import { SignOutButton } from "@clerk/nextjs";
+
 import { ensureUser } from "@/lib/provision";
 import { computeProgress } from "@/lib/progress";
 import { db } from "@/db/client";
 import { entries, requests, workDays, users } from "@/db/schema";
 import { desc, eq, sql } from "drizzle-orm";
 
-// ── Walidacja server action ────────────────────────────────────────────────
 const EntrySchema = z.object({
   requestId: z.coerce.number().int().positive(),
   workDayId: z.coerce.number().int().positive(),
@@ -25,15 +26,12 @@ export default async function Dashboard({
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  // upewnij się, że istniejesz w tabeli users
   const me = await ensureUser();
   if (!me) redirect("/sign-in");
 
-  // listy wyboru
   const reqList = await db.select().from(requests).orderBy(desc(requests.id));
   const dayList = await db.select().from(workDays).orderBy(desc(workDays.date));
 
-  // ── bezpieczne parsowanie ?req= ──────────────────────────────────────────
   const rawReq = searchParams?.req;
   const rawReqStr = Array.isArray(rawReq) ? rawReq[0] : rawReq;
   const selectedReqId = (() => {
@@ -42,7 +40,6 @@ export default async function Dashboard({
     return Number.isFinite(n) && n > 0 ? n : undefined;
   })();
 
-  // wybór wniosku po ?req=<id> lub najnowszy
   const currentReq =
     (selectedReqId
       ? reqList.find((r) => r.id === selectedReqId)
@@ -61,7 +58,6 @@ export default async function Dashboard({
     ? computeProgress(currentReq.plannedCount, [{ count: doneRow.done }])
     : null;
 
-  // ranking per inspektor
   const perInspector = currentReq
     ? await db
         .select({
@@ -76,7 +72,6 @@ export default async function Dashboard({
         .orderBy(desc(sql`sum(${entries.count})`))
     : [];
 
-  // ostatnie wpisy (filtrowane pod currentReq)
   const recent = currentReq
     ? await db
         .select({
@@ -94,7 +89,6 @@ export default async function Dashboard({
         .limit(12)
     : [];
 
-  // ── server action: dodanie wpisu ────────────────────────────────────────
   async function addEntry(formData: FormData) {
     "use server";
     const parsed = EntrySchema.safeParse({
@@ -129,12 +123,23 @@ export default async function Dashboard({
       <div className="mx-auto max-w-5xl p-6 space-y-8">
         <header className="flex items-center justify-between">
           <h2 className="text-2xl font-semibold tracking-tight">Dashboard</h2>
-          <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-            {me.name ?? "Inspector"}
-          </span>
+
+          <div className="flex items-center gap-3">
+            <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+              {me.name ?? "Inspector"}
+            </span>
+
+            <SignOutButton redirectUrl="/sign-in">
+              <button
+                type="button"
+                className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition"
+              >
+                Wyloguj
+              </button>
+            </SignOutButton>
+          </div>
         </header>
 
-        {/* Switcher wniosku */}
         {reqList.length > 0 && (
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 shadow">
             <form method="get" className="flex items-center gap-3">

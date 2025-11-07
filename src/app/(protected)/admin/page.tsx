@@ -143,7 +143,6 @@ export default async function AdminPage() {
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur p-5 space-y-4 shadow-md">
           <h3 className="font-medium text-zinc-100">Dodaj wniosek</h3>
           <form action={addRequest} className="grid gap-4 md:grid-cols-6">
-            {/* Wnioskodawca (4 kol) */}
             <div className="md:col-span-4">
               <label className="text-sm text-zinc-300 mb-1 block">
                 Wnioskodawca
@@ -160,7 +159,6 @@ export default async function AdminPage() {
               </select>
             </div>
 
-            {/* Numer wniosku (2 kol) */}
             <div className="md:col-span-2">
               <label className="text-sm text-zinc-300 mb-1 block">
                 Numer wniosku
@@ -172,7 +170,6 @@ export default async function AdminPage() {
               />
             </div>
 
-            {/* Data złożenia (2 kol) */}
             <div className="md:col-span-2">
               <MonthCalendar
                 name="month"
@@ -181,7 +178,6 @@ export default async function AdminPage() {
               />
             </div>
 
-            {/* Liczniki (4 kol → 3 równe kolumny) */}
             <div className="md:col-span-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="text-sm text-zinc-300 mb-1 block">
@@ -225,7 +221,6 @@ export default async function AdminPage() {
               </div>
             </div>
 
-            {/* Uwagi (6 kol) */}
             <div className="md:col-span-6">
               <label className="text-sm text-zinc-300 mb-1 block">
                 Uwagi (opcjonalnie)
@@ -238,7 +233,6 @@ export default async function AdminPage() {
               />
             </div>
 
-            {/* Submit (6 kol, wyrównany do prawej) */}
             <div className="md:col-span-6 flex justify-end">
               <button className="px-4 py-2 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white transition">
                 Zapisz wniosek
