@@ -9,6 +9,7 @@ import {
   pgEnum,
   text,
 } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 
 export const roleEnum = pgEnum("role", ["ADMIN", "INSPECTOR"]);
 
@@ -37,17 +38,19 @@ export const workDays = pgTable("work_days", {
 
 export const entries = pgTable("entries", {
   id: serial("id").primaryKey(),
-  requestId: integer("request_id")
-    .notNull()
-    .references(() => requests.id),
-  inspectorId: integer("inspector_id")
-    .notNull()
-    .references(() => users.id),
-  workDayId: integer("work_day_id")
-    .notNull()
-    .references(() => workDays.id),
-  count: integer("count").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+
+  requestId: integer("request_id").notNull(), // + FK jak u Ciebie
+  workDayId: integer("work_day_id").notNull(),
+  inspectorId: integer("inspector_id").notNull(),
+
+  // ⬇️ NOWE KOLUMNY – nazwy w DB w snake_case,
+  //    klucze eksportowane do TS w camelCase,
+  //    MUSZĄ mieć default(0) i notNull()
+  countSmall: integer("count_small").notNull().default(0),
+  countLarge: integer("count_large").notNull().default(0),
+  countCoupled: integer("count_coupled").notNull().default(0),
+
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 
 export const auditLogs = pgTable("audit_logs", {
